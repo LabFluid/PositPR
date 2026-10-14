@@ -1,105 +1,177 @@
 # PositPR.jl
 
-A pure **Julia implementation** of the [Posit number system](https://posithub.org/docs/Posits4.pdf), providing native encoding, decoding, and arithmetic entirely performed in **Posit representation**, without relying on IEEE floating-point operations at any stage.  
-Includes full type interoperability for scientific computing and machine learning applications.
+A pure-Julia implementation of the [Posit number system](https://posithub.org/docs/Posits4.pdf)
+(the Posit Standard, 2022)
+for any configuration `Posit{ps,es}` with up to 128 bits, including the
+**quire** for exact sums and dot products.
 
+All arithmetic is done with integer operations, with no floating-point
+operations along the way. Every operation computes its exact result and is then
+rounded **once**, to nearest with ties to even on the bit string, as the
+standard requires. The suffix *PR* is a tribute to the Universidade Federal do
+Paraná (UFPR), where the library was developed.
 
----
+It is designed for:
+- **numerical analysis** and reproducible low-precision experiments;
+- **scientific computing** and exploration of custom arithmetic;
+- [**integration with deep learning frameworks**](https://github.com/uzzui/PositPR-PINNs)
+  such as Lux.jl and NeuralPDE.jl.
 
-## Overview
+## The posit format
 
-**PositPR.jl** implements the *Posit* numerical format, a tapered-precision alternative to IEEE 754 proposed by John L. Gustafson.  
-It supports arbitrary configurations `(ps, es)` for the total bit size and exponent field, and provides a full set of arithmetic, comparison, and conversion operations.
+A posit with `ps` bits and `es` exponent bits is a bit string
 
-This library is fully written in Julia and designed for:
-- **Numerical analysis** and reproducible low-precision experiments  
-- **Scientific computing** and custom arithmetic exploration  
-- [**Integration with deep learning frameworks**](https://github.com/uzzui/PositPR-PINNs) like Lux.jl and NeuralPDE.jl  
+```
+sign | regime (variable length) | exponent (up to es bits) | fraction (remaining bits)
+```
 
----
+and represents `(-1)^s · useed^k · 2^e · (1 + f)` with `useed = 2^(2^es)`.
+The regime is a run of identical bits that works like a "super-exponent". The
+result is **tapered precision**: numbers close to 1 get the most fraction bits,
+while very large or very small numbers get fewer bits and a much wider dynamic
+range than an IEEE float of the same size. For example, `Posit{16,2}` has 11
+fraction bits in `[1/16, 16)`, one more than `Float16`, but fewer outside
+`[2^-8, 2^8)`.
+
+There is a single zero and a single exception value, **NaR** ("not a real").
+Posits never overflow to infinity or underflow to zero: results saturate at
+`maxpos` and `minpos`.
 
 ## Installation
 
-Once published:
-```julia
-] add PositPR
-```
-For development or testing:
+The package is not registered yet. Install it from GitHub:
+
 ```julia
 ] add https://github.com/LabFluid/PositPR
 ```
 
-Then:
+or, for development, from a local clone with `] dev path/to/PositPR`.
+
+## Quick start
+
 ```julia
 using PositPR
+
+P = Posit{16,2}               # family; the concrete type is Posit16{2}
+x = P(1.5); y = P(0.1)
+
+x + y, x * y, x / y           # correctly rounded
+sqrt(y), exp(y), sin(y)       # elementary functions (within 1 ULP)
+Float64(y)                    # 0.100006103515625: the exact stored value
+nextPosit(x), prevPosit(x)    # neighbours on the posit ring
+isNaR(NaR(P))                 # true
+
+sizeof(x)                     # 2: stored as a UInt16, just like a Float16
+PositPR.pi(P)                 # pi rounded to Posit{16,2} (not exported)
+
+A = P[2 1; 1 3]
+A * P[1, 1]                   # generic Julia code works on posits
+rand(P), randn(P)
 ```
----
 
-## Features
+Aliases select the storage word automatically: `Posit8{es}`, `Posit16{es}`,
+`Posit32{es}`, `Posit64{es}`, or `PositType(ps, es)` for any size. Each posit
+is stored as its bit pattern in the smallest unsigned integer that holds it
+(`UInt8` … `UInt128`), so arrays of posits use the same memory as arrays of
+floats of the same width.
 
-| Component | Description |
-|------------|-------------|
-| **Core type** | `Posit{ps, es}` with dynamic regime and exponent fields |
-| **Encoding / Decoding** | Bitstring representation and reversible conversion |
-| **Arithmetic** | `+`, `-`, `*`, `/`, `^`, `√` |
-| **Comparisons** | Full set of relational and equality operators |
-| **Conversions** | To and from `Float64`, `Float32`, and `Int` |
-| **Mixed-type support** | Automatic promotion with native Julia types |
-| **Mathematical functions** | Experimental: `exp`, `log`, `sqrt`, trigonometric |
-| **Random generation** | Uniformly distributed Posit values |
-| **Testing suite** | Comprehensive tests for all modules and edge cases |
+### The quire: exact accumulation
 
----
-
-## Usage
-
-Creating Posit numbers and arithmetic operations:
 ```julia
-T = Posit{8,2}
-ONE = one(T)
-ZERO = zero(T)
-x = T(1.5)
-y = T(0.5)
+q = Quire(P)
+for (a, b) in zip(xs, ys)
+    qmuladd!(q, a, b)         # q += a*b, exactly
+end
+Posit(q)                      # rounded once
 
-x + y     # addition
-x * y     # multiplication
-x / y     # division
-x ^ y     # power
+fdp(xs, ys)                   # fused dot product
+fsum(P.([1e4, 1, -1e4]))      # 1.0 (naive summation gives 0)
+fma(a, b, c)                  # a*b + c with one rounding
 ```
 
-You can also create a Posit number by decoding a bit pattern:
-```julia
-BP = "01000000"
-decoded = PositDecoder(BP, T)
+The quire is a fixed-point accumulator whose least significant bit is
+`minpos²`, so every product of two posits fits exactly. Here it is backed by a
+`BigInt` and never overflows. Wherever the 16·ps-bit quire of the standard does
+not overflow, both give the same results.
+
+## Exported API
+
+| area | names |
+|---|---|
+| types | `Posit`, `Posit8`, `Posit16`, `Posit32`, `Posit64`, `PositType`, `useed` |
+| conversions | `x2Posit`, `Posit2x`, `Posit2Posit`, `PositConverter` (also `P(x)`, `Float64(p)`, `BigFloat(p)`, `convert`, `promote_rule`) |
+| bit strings | `PositDecoder`, `PositEncoder`, `to_decimal`, `shift_left`, `exponent_update` |
+| comparisons | `nextPosit`, `prevPosit`, `isNaR`, `NaR` (plus `==`, `<`, `abs`, `eps`, `typemax`, …) |
+| quire | `Quire`, `qadd!`, `qsub!`, `qmuladd!`, `qmulsub!`, `qneg!`, `qabs!`, `qclear!`, `fdp`, `fsum` |
+
+Arithmetic (`+ - * /`, `sqrt`, `^`, `mod`, `fma`), `exp`, `log`, `sin`, `cos`,
+`tan`, `tanh`, `rand` and `randn` extend the Base functions.
+
+## Implementation notes
+
+- **Decoding with bit operations.** Regime, exponent and fraction are extracted
+  with `leading_zeros`/`leading_ones` on the stored word.
+- **One rounding point.** Every operation reduces its exact result to
+  `(sign, M, P)`, meaning `±M·2^P` with an integer `M`, and passes it to a single
+  function, `posit_round`, which applies round-to-nearest-even on the bit string
+  and saturation. Intermediate integers use `UInt128` whenever they fit (always
+  for `ps ≤ 32`) and `BigInt` otherwise.
+- **Comparisons as integers.** Posits are ordered like two's-complement
+  integers, so `<` and `==` are integer comparisons.
+- **Elementary functions** are evaluated in a wider posit type
+  (`Posit{ps+16,es}`) and rounded once to the target type.
+
+Source files are in `src/posit/`: `type.jl`, `rounding.jl`, `operations.jl`,
+`conversions.jl`, `comparisons.jl`, `encoding_decoding.jl`, `trig.jl`,
+`random.jl`, `quire.jl` and `auxiliar.jl`.
+
+## Testing
+
+```sh
+julia --project test/runtests.jl
 ```
 
-Conversions between types:
-```julia
-Float64(x)
-Int(x)
-Posit{8,1}(x)
+The suite compares the library with an independent reference implementation
+(`test/reference.jl`, `BigFloat` with 1024 bits). It is exhaustive for 8-bit
+posits (all 256 patterns and all 65 025 operand pairs, for every `es` from 0 to
+3) and samples 16- and 32-bit posits. All checks pass: `+ - * /` are correctly
+rounded in 100% of the cases, and so are `fma`, `fdp` and `fsum`. Functions with
+loops run under a watchdog process, so an infinite loop shows up as a failure
+instead of hanging the suite.
+
+`dev/stress.jl` runs 800 000 extra random operations against the oracle;
+`dev/quire_demo.jl` and `dev/quire_bench.jl` illustrate the quire.
+
+## Numerical stability benchmarks
+
+`benchmarks/` holds a reproducible suite that compares `Float16`,
+`Posit{16,2}` and `Posit{16,2}` with quire (and their 32-bit counterparts)
+against a 256-bit `BigFloat` reference. It separates the error from
+representing the data from the error made by the arithmetic, and records the
+magnitudes of intermediate values so the effect of tapered precision can be
+measured.
+
+```sh
+julia --project=benchmarks benchmarks/run_all.jl
 ```
 
-Generating random Posit numbers:
-```julia
-rand(T, 5)
-# → Vector of random Posit values
-```
+The documentation is in Portuguese: see `benchmarks/README.md`,
+`FUNDAMENTACAO.md` (method) and `RESULTADOS_I.md` (results for near-singular
+linear systems).
+
+## Known limitations
+
+- `x / 0` throws `DivideError`; the standard specifies NaR.
+- The quire uses `BigInt`, so it allocates and is about 10× slower than plain
+  posit arithmetic. A fixed-size quire would remove both costs.
+- Performance is that of a software emulation: tens of nanoseconds per
+  operation, a few times slower than hardware `Float16`/`Float32`.
 
 ## Contributing
 
-If you find a **bug**, have a **feature suggestion**, or notice something that could be improved,  
-please [open an issue](https://github.com/LabFluid/PositPR/issues) or submit a pull request.  
+If you find a **bug**, have a **feature suggestion**, or notice something that could be improved,
+please [open an issue](https://github.com/LabFluid/PositPR/issues) or submit a pull request.
 Contributions, tests, and feedback are very welcome!
-
----
-
-## License
-
-MIT © 2025 [Mateus Rebellato Ussui](http://lattes.cnpq.br/0621104339270060)  
-Universidade Federal do Paraná (UFPR)
-
----
 
 ## References
 
@@ -159,6 +231,13 @@ Universidade Federal do Paraná (UFPR)
   *NeuralPDE: Automating Physics-Informed Neural Networks (PINNs) with Error Approximations.* arXiv, 2021.  
   DOI: [10.48550/ARXIV.2107.09443](https://doi.org/10.48550/ARXIV.2107.09443)
 
----
+- POSIT WORKING GROUP. *Standard for Posit Arithmetic (2022).* 2022.
+
+- USSUI, M. R. *Sistema de Ponto Flutuante com Precisão Variável Posit em Redes Neurais
+  Informadas pela Física (PINNs).* Undergraduate thesis (Industrial Mathematics), UFPR, 2025.
 
 
+## License
+
+MIT © 2025 [Mateus Rebellato Ussui](http://lattes.cnpq.br/0621104339270060)  
+Universidade Federal do Paraná (UFPR). See [LICENSE](LICENSE).

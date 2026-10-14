@@ -1,586 +1,335 @@
+# Posit arithmetic.
+#
+# Every operation computes the EXACT result from the integer mantissas (with the
+# hidden bit) and the expanded exponents E = 2^es·k + e of the operands, and only
+# then rounds once with `posit_round` (rounding.jl). Hence all basic operations
+# are correctly rounded (RNE), as required by the standard. Intermediate integers
+# are UInt128 when they fit in 127 bits (always for ps ≤ 32), BigInt otherwise.
 
-import Base: >>
-function >>(a::Posit{ps, es}, b::Int64) where {ps, es}
-    if a.e >= b
-        return Posit{ps, es}(a.s, a.sn, a.k, a.rs, a.ers, a.e - b, a.fi, a.fs, a.f, a.useed)
-    else
-        two_to_es = 1<<es
-        reduction_in_k = Int(ceil((b-a.e)/two_to_es))
-        return Posit{ps, es}(a.s, a.sn, a.k - reduction_in_k, a.rs, a.ers, a.e + reduction_in_k*two_to_es - b, a.fi, a.fs, a.f, a.useed)
-    end
-    y
+import Base: >>, <<
+# Multiplication/division by 2^n: only the exponent changes, but the regime may
+# change size, so the result also goes through posit_round.
+function >>(a::Posit{ps, es}, n::Int64) where {ps, es}
+    is_special(a) && return a
+    s, M, P = exact_parts(a)
+    return posit_round(Posit{ps, es}, s, M, P - n)
 end
 
-import Base: <<
-function <<(a::Posit{ps, es}, b::Int64) where {ps, es}
-    two_to_es = 1<<es
-    addition_in_k = div(b+a.e, two_to_es)
-    return Posit{ps, es}(a.s, a.sn, a.k + addition_in_k, a.rs, a.ers, (b+a.e) % two_to_es, a.fi, a.fs, a.f, a.useed)
+function <<(a::Posit{ps, es}, n::Int64) where {ps, es}
+    is_special(a) && return a
+    s, M, P = exact_parts(a)
+    return posit_round(Posit{ps, es}, s, M, P + n)
 end
 
-import Base: round
-function round(p::Posit{ps, es}) where {ps, es}
-    # If there are no fraction bits, nothing to round
-    if p.fs == 0
-        return Posit{ps, es}(p.s, p.sn, p.k, p.rs, p.ers, p.e, "", 0, 0.0, p.useed)
+"Exact sum of two values `(s, M, P)`, rounded to `T`."
+function add_exact(::Type{T}, (sa, Ma, Pa), (sb, Mb, Pb)) where {ps, es, T <: Posit{ps, es}}
+    iszero(Ma) && return posit_round(T, sb, Mb, Pb)
+    iszero(Mb) && return posit_round(T, sa, Ma, Pa)
+
+    # If one operand is far below the rounding position of the other, it only
+    # matters as a sticky bit: with g extra bits, x ± tiny lies strictly between
+    # (x·2^g - 1) and x·2^g in units of 2^(P-g). g = ps + 4 makes sure that, for
+    # x - tiny, the run of ones of (x·2^g - 1) reaches past the rounding position.
+    Ta, Tb = Pa + bitlength(Ma), Pb + bitlength(Mb)
+    g = ps + 4
+    if Ta - Tb > ps + 8
+        A = fit_int(Ma, g) << g
+        return posit_round(T, sa, sa == sb ? A : A - one(A), Pa - g, true)
+    elseif Tb - Ta > ps + 8
+        B = fit_int(Mb, g) << g
+        return posit_round(T, sb, sa == sb ? B : B - one(B), Pb - g, true)
     end
 
-    fi = p.fi
-    e = p.e
-    k = p.k
-
-    # Check if we need to round (there are discarded bits)
-    if length(fi) > p.fs
-        first_discarded_bit = fi[p.fs + 1]
-        fi = fi[1:p.fs]  # truncate
-
-        if first_discarded_bit == '1'
-            # Add 1 to the last bit of the current fi
-            rounded, carry = sum_frac(fi, "0"^(p.fs - 1) * "1", 0)
-            fi = rounded
-            e += carry
-            k, e = exponent_update(k * 2^es + e, es)
-        end
+    # Alignment: bring both mantissas to the smaller exponent (no bits are lost)
+    P = min(Pa, Pb)
+    need = max(bitlength(Ma) + Pa - P, bitlength(Mb) + Pb - P) + 1
+    A = need <= 127 ? UInt128(Ma) << (Pa - P) : big(Ma) << (Pa - P)
+    B = need <= 127 ? UInt128(Mb) << (Pb - P) : big(Mb) << (Pb - P)
+    if sa == sb
+        S, s = A + B, sa
+    elseif A >= B
+        S, s = A - B, sa
     else
-        fi = join_frac(fi, p.fs)
+        S, s = B - A, sb
     end
-
-    f = to_decimal(fi) / 2.0^p.fs
-
-    return Posit{ps, es}(p.s, p.sn, k, p.rs, p.ers, e, fi, p.fs, f, p.useed)
+    iszero(S) && return zero(T)
+    return posit_round(T, s, S, P)
 end
 
 import Base: +
 function +(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    # Special cases
-    if iszero(a)
-        return b
-    elseif iszero(b)
-        return a
-    end
-
-    if a == twos_complement(b)
-        return zero(Posit{ps, es})
-    end
-
-    # Ensure a is the larger one (in magnitude)
-    if abs(a) < abs(b)
-        b, a = a, b
-    end
-
-    # Convert to common format if needed
-    a, b = PositConverter(a, b)
-
-    # If signs differ, use subtraction logic
-    if a.s != b.s
-        if a > b
-            return a - twos_complement(b)
-        else
-            return b - twos_complement(a)
-        end
-    end
-
-    # Aligned addition
-    temp_a = 2^es * a.k + a.e
-    temp_b = 2^es * b.k + b.e
-    shifts_in_f = temp_a - temp_b
-    fi_sum, new_e = sum_frac_plus(shift_right("1" * b.fi, shifts_in_f), "1" * a.fi, temp_a)
-    new_k, new_e = exponent_update(new_e, es)
-
-    new_rs = new_k ≥ 0 ? new_k + 2 : -new_k + 1
-    if new_rs >= ps - 1
-        return new_k ≥ 0 ? typemax(Posit{ps, es}) : zero(Posit{ps, es})
-    end
-
-    new_ers = max(0, min(es, ps - new_rs - 1))
-    new_fs = max(0, ps - new_rs - new_ers - 1)
-    fi_sum = join_frac(fi_sum, new_fs)
-
-    f_val = to_decimal(fi_sum) / 2^new_fs
-
-    # Construct new Posit
-    p = Posit{ps, es}(a.s, 0, new_k, new_rs, new_ers, new_e, fi_sum, new_fs, f_val, a.useed)
-    return round(p)
+    (isNaR(a) || isNaR(b)) && return NaR(Posit{ps, es})
+    iszero(a) && return b
+    iszero(b) && return a
+    return add_exact(Posit{ps, es}, exact_parts(a), exact_parts(b))
 end
 
 import Base: -
-function -(a::Posit{ps, es}) where {ps, es}
-    return twos_complement(a)
-end
-	
+-(a::Posit{ps, es}) where {ps, es} = from_bits(Posit{ps, es}, negate_bits(bits(a), ps))
+
 function -(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    # Special cases
-    if iszero(a)
-        return b
-    elseif iszero(b)
-        return a
-    end
-
-    if a == b
-        return zero(Posit{ps, es})
-    end
-
-    # Sign difference → convert to addition
-    if a.s != b.s
-        p = abs(a) + abs(b)
-        return Posit{ps, es}(p.s == a.s ? p.s : a.s, 0, p.k, p.rs, p.ers, p.e, p.fi, p.fs, p.f, a.useed)
-    end
-
-    # Ensure a > b in magnitude
-    a, b = PositConverter(a, b)
-
-    s = a.s
-    if a < b
-        if a.s == 1
-            a, b = abs(a), abs(b)
-        else
-            s = 1
-            b, a = a, b
-        end
-    elseif a.s == 1
-        s = 0
-        a, b = abs(b), abs(a)
-    end
-
-    # Aligned subtraction
-    temp_a = 2^es * a.k + a.e
-    temp_b = 2^es * b.k + b.e
-    shifts_in_f = temp_a - temp_b
-
-    fi, e = sub_frac("1" * a.fi, shift_right("1" * b.fi * "0", shifts_in_f), temp_a)
-    if fi isa Nothing
-        return zero(Posit{ps, es})
-    end
-    k, e = exponent_update(e, es)
-
-    rs = k ≥ 0 ? k + 2 : -k + 1
-    if rs >= ps - 1
-        return k ≥ 0 ? typemax(Posit{ps, es}) : zero(Posit{ps, es})
-    end
-
-    ers = max(0, min(es, ps - rs - 1))
-    fs = ps - rs - ers - 1
-    fi = rpad(fi, fs, '0')[1:fs]
-    f = to_decimal(fi) / 2.0^fs
-
-    p = Posit{ps, es}(s, 0, k, rs, ers, e, fi, fs, f, a.useed)
-    return round(p)
+    (isNaR(a) || isNaR(b)) && return NaR(Posit{ps, es})
+    iszero(b) && return a
+    iszero(a) && return -b
+    sb, Mb, Pb = exact_parts(b)
+    return add_exact(Posit{ps, es}, exact_parts(a), (1 - sb, Mb, Pb))
 end
+
+"Exact product of two integers, as UInt128 when it fits."
+mul_int(A::Integer, B::Integer) =
+    bitlength(A) + bitlength(B) <= 127 ? UInt128(A) * UInt128(B) : big(A) * big(B)
 
 import Base: *
 function *(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    if iszero(a) || iszero(b)
-        return zero(Posit{ps, es})
-    elseif isone(a)
-        return b
-    elseif isone(b)
-        return a
-    end
-
-    if a.s != b.s
-		s = 1
-	else
-		s = 0
-	end
-
-    fi = "0"
-    e = 0
-
-    # Fast path: one of the fractions is a power of two
-    if ispower_oftwo(a.fi)
-        fi = b.fi
-    elseif ispower_oftwo(b.fi)
-        fi = a.fi
-    else
-        # General case: multiply and add hidden bits
-        fi_prod = mul_frac(a.fi, b.fi)
-        sum, temp_e = sum_frac(a.fi, b.fi, 0)
-
-        # Adjust using hidden bit representation (e.g., 10..., 1..., 0...)
-        fi, e = sum_frac(string(temp_e) * sum, "0" * fi_prod, 0)
-
-        if e == 1
-            fi = '1' * fi[2:end]
-        elseif fi[1] == '0'
-            fi = fi[2:end]
-        else
-            fi = '0' * fi[2:end]
-            e += 1
-        end
-    end
-
-    # Compute new exponent: k + e
-    e_expanded = expand_exponent(a) + expand_exponent(b) + e
-    k, e = exponent_update(e_expanded, es)
-
-    # Regime size
-    rs = k ≥ 0 ? k + 2 : -k + 1
-    if rs >= ps - 1
-        return k ≥ 0 ? typemax(Posit{ps, es}) : zero(Posit{ps, es})
-    end
-
-    ers = max(0, min(es, ps - rs - 1))
-    fs = ps - rs - ers - 1
-
-    fi = join_frac(fi, fs)
-    f = to_decimal(fi) / 2.0^fs
-
-    p = Posit{ps, es}(s, 0, k, rs, ers, e, fi, fs, f, a.useed)
-    return round(p)
-end
-
-function *(a::Posit{ps, es}, b::Integer) where {ps, es}
-    # Zero cases
-    if iszero(a)
-        return a
-    end
-
-    if b == 0
-        return zero(Posit{ps, es})
-    end
-
-    # Handle negative integer: a * (-b) = -(a * b)
-    if b < 0
-        return -(a * (-b))
-    end
-
-    # Fast path: a * 1 or a == 1
-    if isone(a)
-        return x2Posit(b, Val(ps), Val(es))
-    end
-
-    if b == 1
-        return a
-    end
-
-    # If b is a power of two, use left shift
-    if ispower_oftwo(b)
-        n = floor(Int, log2(b))
-        return a << n
-    end
-
-    # accumulate shifted versions
-    b_bin = lstrip(bitstring(b), '0')
-    p = zero(Posit{ps, es})
-
-    for (i, char) in enumerate(reverse(b_bin))
-        enable_sum = parse(Int, char)
-        p += a * (enable_sum * 2^(i - 1))
-    end
-
-    rs = p.k ≥ 0 ? p.k + 2 : -p.k + 1
-    if rs >= ps - 1
-        return p.k ≥ 0 ? typemax(Posit{ps, es}) : zero(Posit{ps, es})
-    end
-    ers = max(0, min(es, ps - rs - 1))
-    fs = ps - rs - ers - 1
-
-    fi = p.fi[1:fs]
-    f = to_decimal(fi) / 2.0^fs
-
-    return Posit{ps, es}(p.s, 0, p.k, rs, ers, p.e, fi, fs, f, p.useed)
+    (isNaR(a) || isNaR(b)) && return NaR(Posit{ps, es})
+    (iszero(a) || iszero(b)) && return zero(Posit{ps, es})
+    sa, Ma, Pa = exact_parts(a)
+    sb, Mb, Pb = exact_parts(b)
+    # (Ma·2^Pa)(Mb·2^Pb) = (Ma·Mb)·2^(Pa+Pb), exact
+    return posit_round(Posit{ps, es}, sa ⊻ sb, mul_int(Ma, Mb), Pa + Pb)
 end
 
 import Base: /
 function /(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    if iszero(b)
-        throw("can't divide by 0")
-    end
-
-    if iszero(a)
-        return a
-    end
-
-    if isone(b)
-        return a
-    end
-
-    if a.s != b.s
-		s = 1
-	else
-		s = 0
-	end
-
-    fi = "0"
-    e = 0
-    k = 0
-
-    # If one of the fractions is power of two, shortcut
-    if ispower_oftwo(a.fi) || ispower_oftwo(b.fi)
-        fi = ispower_oftwo(a.fi) ? b.fi : a.fi
-    end
-
-    # Exponent calculation (k and e)
-    e_expanded = expand_exponent(a) - expand_exponent(b)
-    k, e = exponent_update(e_expanded, es)
-
-    # Regime size
-    rs = k ≥ 0 ? k + 2 : -k + 1
-    if rs >= ps - 1
-        return k ≥ 0 ? typemax(Posit{ps, es}) : zero(Posit{ps, es})
-    end
-
-    # Exponent and fraction sizes
-    ers = max(0, min(es, ps - rs - 1))
-    fs = max(0, ps - rs - ers - 1)
-
-    # Fraction division logic
-    if a.fi == b.fi
-        fi = "0"
-    else
-        fi = div_frac("1" * a.fi, "1" * b.fi, fs + 2)
-
-        # Normalize: ensure MSB is 1
-        if fi[1] == '0'
-            e -= 1
-            k, e = exponent_update(2^es * k + e, es)
-            fi = fi[3:end]
-        else
-            fi = fi[2:end-1]
-        end
-    end
-
-    f = to_decimal(fi) / 2.0^fs
-    p = Posit{ps, es}(s, 0, k, rs, ers, e, fi, fs, f, a.useed)
-    return round(p)
+    (isNaR(a) || isNaR(b)) && return NaR(Posit{ps, es})
+    iszero(b) && throw(DivideError())
+    iszero(a) && return a
+    sa, Ma, Pa = exact_parts(a)
+    sb, Mb, Pb = exact_parts(b)
+    return posit_round_div(Posit{ps, es}, sa ⊻ sb, Ma, Pa, Mb, Pb)
 end
 
-function /(a::Posit{ps, es}, b::Integer) where {ps, es}
-    if b == 0
-        error("can't divide by 0")
-    end
+# ------------------------------------------------------------- operations with integers
+# The integer enters exactly (it is not rounded to a Posit first).
 
-    if iszero(a)
-        return zero(Posit{ps, es})
-    end
+function +(a::Posit{ps, es}, n::Integer) where {ps, es}
+    isNaR(a) && return a
+    return add_exact(Posit{ps, es}, exact_parts(a), exact_parts(n))
+end
++(n::Integer, a::Posit{ps, es}) where {ps, es} = a + n
 
-    if b == 1
-        return a
-    end
+function -(a::Posit{ps, es}, n::Integer) where {ps, es}
+    isNaR(a) && return a
+    sn, Mn, Pn = exact_parts(n)
+    return add_exact(Posit{ps, es}, exact_parts(a), (1 - sn, Mn, Pn))
+end
+-(n::Integer, a::Posit{ps, es}) where {ps, es} = (-a) + n
 
-    # If b is a power of two, use right shift
-    if ispower_oftwo(b)
-        n = floor(Int, log2(b))
-        return a >> n
-    end
+function *(a::Posit{ps, es}, n::Integer) where {ps, es}
+    isNaR(a) && return a
+    (iszero(a) || iszero(n)) && return zero(Posit{ps, es})
+    sa, Ma, Pa = exact_parts(a)
+    sn, Mn, _ = exact_parts(n)
+    return posit_round(Posit{ps, es}, sa ⊻ sn, mul_int(Ma, Mn), Pa)
+end
+*(n::Integer, a::Posit{ps, es}) where {ps, es} = a * n
 
-    # General case: factorize b and divide iteratively
-    factors = factorize(b)
-    p = copy(a)
-
-    for (factor, count) in factors
-        if ispower_oftwo(factor)
-            n = floor(Int, log2(factor))
-            p = p >> n
-        else
-            p = p / x2Posit(factor, Val(ps), Val(es))
-        end
-    end
-
-    return p
+function /(a::Posit{ps, es}, n::Integer) where {ps, es}
+    iszero(n) && throw(DivideError())
+    isNaR(a) && return a
+    iszero(a) && return a
+    sa, Ma, Pa = exact_parts(a)
+    sn, Mn, _ = exact_parts(n)
+    return posit_round_div(Posit{ps, es}, sa ⊻ sn, Ma, Pa, Mn, 0)
 end
 
-/(b::Integer, a::Posit{ps, es}) where {ps, es} = x2Posit(b, Val(ps), Val(es)) / a
+function /(n::Integer, a::Posit{ps, es}) where {ps, es}
+    isNaR(a) && return a
+    iszero(a) && throw(DivideError())
+    iszero(n) && return zero(Posit{ps, es})
+    sa, Ma, Pa = exact_parts(a)
+    sn, Mn, _ = exact_parts(n)
+    return posit_round_div(Posit{ps, es}, sa ⊻ sn, Mn, 0, Ma, Pa)
+end
 
+# ------------------------------------------------------------------- square root
 import Base: sqrt
 function sqrt(a::Posit{ps, es}) where {ps, es}
-    if a.s == 1
-        throw(ArgumentError("square root not defined for negative numbers."))
-    end
-
-    if isone(a)
-        return a
-    end
- 
-    temp_exp = a.e - a.fs
-    needs_shift = false
-    shift_amount = 0
-
-    # Perfect square: no fraction
-    exp = 2^es * a.k + a.e
-    if all(c -> c == '0', a.fi) && exp ≥ 2 && iseven(exp)
-        return a >> (exp ÷ 2)
-    end
-    
-    # Adjust exponent and calculate square root of the fraction
-    if iseven(a.e)
-        e = a.e ÷ 2
-        fs = a.fs
-        if isodd(temp_exp)
-            fi = sqrt_frac(shift_left("1" * a.fi, 1), fs + 1)[2:end]
-        else
-            fi = sqrt_frac("1" * a.fi, fs + 1)[2:end]
-        end
-        ers = a.ers
-    else
-        e = (a.e - 1) ÷ 2
-        ers = max(0, min(es, ps - a.rs - 1))
-        fs = ps - a.rs - ers - 1
-        if isodd(temp_exp)
-            fi = sqrt_frac(shift_left("1" * a.fi, 1), fs + 1)[2:end]
-        else
-            fi = sqrt_frac("1" * a.fi, fs + 1)[2:end]
-        end
-    end
-
-    # Regime adjustment
-    if iseven(a.k)
-        k = div(a.k, 2)
-    else
-        k = div(a.k - 1, 2)
-        needs_shift = true
-        shift_amount = 1 << (es - 1)
-    end
-
-    rs = k ≥ 0 ? k + 2 : -k + 1
-    if rs >= ps - 1
-        return k ≥ 0 ? typemax(Posit{ps, es}) : zero(Posit{ps, es})
-    end
-
-    f = to_decimal(fi) / 2.0^fs
-    p = Posit{ps, es}(a.s, a.sn, k, rs, ers, e, fi, fs, f, a.useed)
-    return needs_shift ? p << shift_amount : p
+    is_special(a) && return a
+    sign_bit(a) == 1 && throw(DomainError(a, "square root not defined for negative numbers."))
+    _, M, P = exact_parts(a)
+    # sqrt(M·2^P) with even P: sqrt(M)·2^(P/2)
+    shift = isodd(P) ? 1 : 0
+    P -= shift
+    K = ps + 8                             # extra result bits
+    X = fit_int(M, shift + 2K) << (shift + 2K)
+    r = isqrt(X)                           # integer square root (digit by digit)
+    return posit_round(Posit{ps, es}, 0, r, (P - 2K) ÷ 2, r * r != X)
 end
 
-import Base: exp
-function exp(a::Posit{ps, es}) where {ps, es}
-    if iszero(a)
-        return one(Posit{ps, es})
-    end
-
-    # Negative exponent: use exp(-x) = 1 / exp(x)
-    if a < zero(Posit{ps, es})
-        return one(Posit{ps, es}) / exp(-a)
-    end
-
-    exp_a = one(Posit{ps, es})
-    term = one(Posit{ps, es})
-
-    n = 1
-    while abs(term) > eps(exp_a)
-        # term = term * a / n
-        term *= a / x2Posit(n, Val(ps), Val(es))
-        exp_a += term
-        n += 1
-    end
-
-    return exp_a
-end
-
-import Base: log
-function log(a::Posit{ps, es}) where {ps, es}
-    if a.s == 1 || iszero(a)
-        throw(DomainError(a, "log is only defined for positive real inputs."))
-    end
-    # Extract exponent as integer: k * 2^es + e
-    exponent = 2^es * a.k + a.e
-
-    # Rescale to remove the exponent, bringing y closer to 1
-    k = 0
-    e = 0
-    y = Posit{ps, es}(a.s, a.sn, k, a.rs, a.ers, e, a.fi, a.fs, a.f, a.useed)
-    # Apply transformation: log(x) = 2 * atanh((x - 1)/(x + 1))
-    y = (y - one(Posit{ps, es})) / (y + one(Posit{ps, es}))
-
-    sum = zero(Posit{ps, es})
-    last_sum = copy(sum)
-
-    # Series expansion of atanh(y)
-    for k in 0:50
-        term = (y ^ (2k + 1)) / x2Posit(2k + 1, Posit{ps, es})
-        sum += term
-        if last_sum == sum
-            break
-        end
-        last_sum = copy(sum)
-    end
-
-    # Use log(2) in high precision
-    log2 = big"0.693147180559945309417232121458176568075500134360255254120680009493393621969694715605863326996418687542001481020570"
-
-    return x2Posit(exponent * log2, Posit{ps, es}) + (x2Posit(2.0, Posit{ps, es}) * sum)
-end
-import Base: log
-log(a::Posit{ps, es}) where {ps, es} = log(a)  # log == log
-
+# ---------------------------------------------------------------------- powers
 import Base: ^
-function ^(a::Posit{ps, es}, b::Integer) where {ps, es}
-    if b == 0
-        return one(Posit{ps, es})
-    
-    # a^(-b) = 1 / a^b
-    elseif b < 0
-        return one(Posit{ps, es}) / (a ^ (-b))
+const EXACT_POW_LIMIT = 4096
+
+function ^(a::Posit{ps, es}, n::Integer) where {ps, es}
+    T = Posit{ps, es}
+    isNaR(a) && return a
+    n == 0 && return one(T)
+    if iszero(a)
+        n > 0 && return zero(T)
+        throw(DivideError())
     end
-
-
-    # Exponentiation by squaring
-    result = one(Posit{ps, es})
-    base = a
-    exp = b
-
-    while exp > 0
-        if isodd(exp)
-            result *= base
-        end
+    s, M, P = exact_parts(a)
+    sr = isodd(n) ? s : 0
+    m = abs(n)
+    if m <= EXACT_POW_LIMIT
+        # a^m = M^m · 2^(P·m), exact; rounded once
+        Mm = bitlength(M) * m <= 127 ? UInt128(M)^m : big(M)^m
+        n > 0 && return posit_round(T, sr, Mm, P * m)
+        return posit_round_div(T, sr, UInt128(1), 0, Mm, P * m)
+    end
+    # very large exponents: exponentiation by squaring in extended precision
+    result = one(wide_type(T))
+    base = widen_posit(abs(a))
+    while m > 0
+        isodd(m) && (result *= base)
         base *= base
-        exp ÷= 2
+        m ÷= 2
     end
-
-    return result
+    n < 0 && (result = one(result) / result)
+    r = narrow_posit(result, T)
+    return sr == 1 ? -r : r
 end
 
 function ^(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    # a^0 = 1
-    T = Posit{ps,es}
+    T = Posit{ps, es}
+    (isNaR(a) || isNaR(b)) && return NaR(T)
+    iszero(b) && return one(T)
+    iszero(a) && return zero(T)
 
-    if iszero(a)
-        return iszero(b) ? one(T) : zero(T)
-
-    elseif iszero(b)
-        return one(T)
-
-    # a^(±1/2) = ±sqrt(a)
-    elseif abs(b) == x2Posit(0.5, T)
-        return b > zero(T) ? sqrt(a) : one(T) / sqrt(a)
-
-    # a^(-b) = 1 / a^b
-    elseif b < zero(Posit{ps, es})
-        return one(Posit{ps, es}) / (a ^ (-b))
-
-    else
-        # Se a < 0 e b não é inteiro → erro de domínio
-        if a.s == 1
-            b_int = int_floor(b)
-            b_is_integer = b == x2Posit(b_int, T)
-            if !b_is_integer
-                throw(DomainError((a, b), "Exponentiation a^b is undefined for a < 0 when b is not an integer."))
-            end
-
-            result = exp(b * log(abs(a)))
-            return iseven(b_int) ? result : -result
-        end
-
-        return exp(b * log(a))
+    # integer exponent: exact path
+    b_int = round(b, RoundToZero)
+    if b_int == b && abs(Posit2x(b)) <= EXACT_POW_LIMIT
+        return a ^ Int(b)
     end
+
+    # a^(±1/2) = sqrt
+    if abs(b) == x2Posit(0.5, T)
+        return sign_bit(b) == 0 ? sqrt(a) : one(T) / sqrt(a)
+    end
+
+    if sign_bit(a) == 1
+        throw(DomainError((a, b), "Exponentiation a^b is undefined for a < 0 when b is not an integer."))
+    end
+    w = exp_series(widen_posit(b) * log_series(widen_posit(a)))
+    return narrow_posit(w, T)
 end
 
-function +(a::Posit{ps, es}, b::Integer) where {ps, es}
-    b_posit = x2Posit(b, Posit{ps, es})
-    return a + b_posit
+# ------------------------------------------------------------ exponential and logarithm
+import Base: exp
+function exp(a::Posit{ps, es}) where {ps, es}
+    isNaR(a) && return a
+    return narrow_posit(exp_series(widen_posit(a)), Posit{ps, es})
 end
 
-function -(a::Posit{ps, es}, b::Integer) where {ps, es}
-    b_posit = x2Posit(b, Posit{ps, es})
-    return a * b_posit
+"Taylor series of e^a, evaluated in the type of `a` itself."
+function exp_series(a::Posit{ps, es}) where {ps, es}
+    T = Posit{ps, es}
+    iszero(a) && return one(T)
+
+    # Negative exponent: use exp(-x) = 1 / exp(x)
+    sign_bit(a) == 1 && return one(T) / exp_series(-a)
+
+    # Above ln(maxpos) the result saturates
+    Posit2x(a) > (1 << es) * (ps - 2) * log(2.0) && return typemax(T)
+
+    # Range reduction: e^a = (e^(a/2^j))^(2^j), with a/2^j < 1
+    j = max(0, expand_exponent(a) + 1)
+    r = a >> j
+
+    exp_r = one(T)
+    term = one(T)
+    n = 1
+    while true
+        term = term * r / n                # term = r^n / n!
+        new = exp_r + term
+        new == exp_r && break
+        exp_r = new
+        n += 1
+    end
+    for _ in 1:j
+        exp_r = exp_r * exp_r
+    end
+    return exp_r
 end
 
-Base.:+(a::Integer, b::Posit{ps, es}) where {ps, es} = b + a
-Base.:*(a::Integer, b::Posit{ps, es}) where {ps, es} = b * a
+"Series for e^a - 1 (no cancellation for small |a|)."
+function expm1_series(a::Posit{ps, es}) where {ps, es}
+    T = Posit{ps, es}
+    iszero(a) && return a
+    sum = zero(T)
+    term = one(T)
+    n = 1
+    while true
+        term = term * a / n
+        new = sum + term
+        new == sum && break
+        sum = new
+        n += 1
+    end
+    return sum
+end
 
-import Base: floor
+# Use log(2) in high precision
+const LN2 = big"0.693147180559945309417232121458176568075500134360255254120680009493393621969694715605863326996418687542001481020570"
+const SQRT2 = big"1.414213562373095048801688724209698078569671875376948073176679737990732478462107038850387534327641572735013846230912"
+
+import Base: log
+function log(a::Posit{ps, es}) where {ps, es}
+    isNaR(a) && return a
+    if sign_bit(a) == 1 || iszero(a)
+        throw(DomainError(a, "log is only defined for positive real inputs."))
+    end
+    return narrow_posit(log_series(widen_posit(a)), Posit{ps, es})
+end
+
+"ln(a) = E·ln 2 + 2·atanh((y-1)/(y+1)), with a = 2^E·y and y ∈ [√2/2, √2)."
+function log_series(a::Posit{ps, es}) where {ps, es}
+    T = Posit{ps, es}
+    _, M, P = exact_parts(a)
+    E = P + bitlength(M) - 1
+    y = posit_round(T, 0, M, P - E)        # mantissa in [1, 2)
+    if y > x2Posit(SQRT2, T)               # center y around 1 to avoid cancellation
+        y = y >> 1
+        E += 1
+    end
+    z = (y - one(T)) / (y + one(T))
+    z2 = z * z
+    sum = zero(T)
+    term = z
+    k = 0
+    while k < 500
+        new = sum + term / (2k + 1)
+        new == sum && break
+        sum = new
+        term *= z2
+        k += 1
+    end
+    return x2Posit(E * LN2, T) + (sum << 1)
+end
+
+# --------------------------------------------------------------- rounding to integers
+import Base: round, floor
+"""
+    round(p, r = RoundNearest)
+
+Round the posit to an integer (returned as a Posit), like `Base.round` does
+for Float64. Also provides `floor`, `ceil` and `trunc` (via RoundDown, RoundUp,
+RoundToZero).
+"""
+function round(p::Posit{ps, es}, r::RoundingMode = RoundNearest) where {ps, es}
+    is_special(p) && return p
+    s, M, P = exact_parts(p)
+    P >= 0 && return p                     # already an integer
+    v = s == 1 ? -big(M) : big(M)
+    q = div(v, big(1) << -P, r)
+    iszero(q) && return zero(Posit{ps, es})
+    return posit_round(Posit{ps, es}, q < 0 ? 1 : 0, abs(q), 0)
+end
+
+floor(p::Posit{ps, es}) where {ps, es} = round(p, RoundDown)
+
 import Base: mod
-
 function mod(a::Posit{ps, es}, b::Posit{ps, es})::Posit{ps, es} where {ps, es}
     if iszero(b)
         error("Division by zero in mod function")

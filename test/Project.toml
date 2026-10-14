@@ -1,0 +1,9 @@
+[deps]
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+PositPR = "6ebed8d1-d28d-4e17-8ae2-480f907d8608"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Test = "8dfed614-e22f-5e08-85e1-65c5234f0b40"
+
+[sources]
+PositPR = {path = ".."}

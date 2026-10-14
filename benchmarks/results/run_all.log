@@ -1,0 +1,190 @@
+== validação
+Test Summary:         | Pass  Total  Time
+Benchmarks: validação | 2111   2111  8.8s
+== Experimento I (16 bits): precisão
+  canonica    diadica  original Float16            j≤20  singular j= 11  med. erro LU>1% j= 10  RI>1% j= 11  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  original Posit{16,2}        j≤20  singular j= 12  med. erro LU>1% j= 11  RI>1% j= 12  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  original Posit{16,2}+quire  j≤20  singular j= 12  med. erro LU>1% j= 11  RI>1% j= 12  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  comum    Float16            j≤10  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  comum    Posit{16,2}        j≤10  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  comum    Posit{16,2}+quire  j≤10  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    generica original Float16            j≤20  singular j= 11  med. erro LU>1% j=  7  RI>1% j= 11  med.(j≤8) erro LU 1.95e-03  η 4.39e-05
+  canonica    generica original Posit{16,2}        j≤20  singular j= 12  med. erro LU>1% j=  8  RI>1% j= 12  med.(j≤8) erro LU 1.22e-03  η 2.25e-05
+  canonica    generica original Posit{16,2}+quire  j≤20  singular j= 12  med. erro LU>1% j=  8  RI>1% j= 12  med.(j≤8) erro LU 1.22e-03  η 2.25e-05
+  canonica    generica comum    Float16            j≤ 9  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 1.14e-04  η 2.53e-07
+  canonica    generica comum    Posit{16,2}        j≤ 9  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 4.32e-05  η 1.27e-07
+  canonica    generica comum    Posit{16,2}+quire  j≤ 9  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 4.32e-05  η 1.27e-07
+  rotacionada diadica  original Float16            j≤20  singular j= 11  med. erro LU>1% j=  6  RI>1% j= 13  med.(j≤8) erro LU 3.91e-03  η 1.71e-04
+  rotacionada diadica  original Posit{16,2}        j≤20  singular j= 12  med. erro LU>1% j=  7  RI>1% j= 13  med.(j≤8) erro LU 1.95e-03  η 6.56e-05
+  rotacionada diadica  original Posit{16,2}+quire  j≤20  singular j= 12  med. erro LU>1% j=  7  RI>1% j= 14  med.(j≤8) erro LU 2.32e-03  η 5.66e-05
+  rotacionada diadica  comum    Float16            j≤14  singular j= -1  med. erro LU>1% j=  7  RI>1% j= -1  med.(j≤8) erro LU 2.41e-03  η 1.25e-04
+  rotacionada diadica  comum    Posit{16,2}        j≤14  singular j= -1  med. erro LU>1% j=  8  RI>1% j= -1  med.(j≤8) erro LU 1.25e-03  η 6.66e-05
+  rotacionada diadica  comum    Posit{16,2}+quire  j≤14  singular j= -1  med. erro LU>1% j=  9  RI>1% j= -1  med.(j≤8) erro LU 8.98e-04  η 4.23e-05
+  rotacionada generica original Float16            j≤20  singular j= 10  med. erro LU>1% j=  5  RI>1% j= 12  med.(j≤8) erro LU 6.35e-03  η 1.71e-04
+  rotacionada generica original Posit{16,2}        j≤20  singular j= 11  med. erro LU>1% j=  7  RI>1% j= 13  med.(j≤8) erro LU 3.18e-03  η 7.57e-05
+  rotacionada generica original Posit{16,2}+quire  j≤20  singular j= 11  med. erro LU>1% j=  7  RI>1% j= 13  med.(j≤8) erro LU 3.54e-03  η 6.42e-05
+  rotacionada generica comum    Float16            j≤13  singular j= -1  med. erro LU>1% j=  7  RI>1% j= -1  med.(j≤8) erro LU 3.67e-03  η 1.19e-04
+  rotacionada generica comum    Posit{16,2}        j≤13  singular j= -1  med. erro LU>1% j=  7  RI>1% j= -1  med.(j≤8) erro LU 1.86e-03  η 6.73e-05
+  rotacionada generica comum    Posit{16,2}+quire  j≤13  singular j= -1  med. erro LU>1% j=  8  RI>1% j= -1  med.(j≤8) erro LU 1.45e-03  η 4.07e-05
+== Experimento I (16 bits): comparação pareada (Gauss sem pivoteamento, j ≤ 8)
+  canonica    original Posit{16,2}        vs Float16            n=  32  A melhor  21.9%  empate  59.4%  B melhor  18.8%  med log2(eB/eA) = +0.00
+  canonica    original Posit{16,2}+quire  vs Posit{16,2}        n=  32  A melhor   0.0%  empate 100.0%  B melhor   0.0%  med log2(eB/eA) = +0.00
+  canonica    original Posit{16,2}+quire  vs Float16            n=  32  A melhor  21.9%  empate  59.4%  B melhor  18.8%  med log2(eB/eA) = +0.00
+  canonica    comum    Posit{16,2}        vs Float16            n=  32  A melhor  25.0%  empate  75.0%  B melhor   0.0%  med log2(eB/eA) = +0.00
+  canonica    comum    Posit{16,2}+quire  vs Posit{16,2}        n=  32  A melhor   0.0%  empate 100.0%  B melhor   0.0%  med log2(eB/eA) = +0.00
+  canonica    comum    Posit{16,2}+quire  vs Float16            n=  32  A melhor  25.0%  empate  75.0%  B melhor   0.0%  med log2(eB/eA) = +0.00
+  rotacionada original Posit{16,2}        vs Float16            n=1024  A melhor  67.5%  empate   7.1%  B melhor  25.4%  med log2(eB/eA) = +1.00
+  rotacionada original Posit{16,2}+quire  vs Posit{16,2}        n=1024  A melhor  47.2%  empate  12.9%  B melhor  39.9%  med log2(eB/eA) = +0.00
+  rotacionada original Posit{16,2}+quire  vs Float16            n=1024  A melhor  70.4%  empate   2.0%  B melhor  27.6%  med log2(eB/eA) = +1.01
+  rotacionada comum    Posit{16,2}        vs Float16            n=1024  A melhor  62.1%  empate   9.7%  B melhor  28.2%  med log2(eB/eA) = +0.58
+  rotacionada comum    Posit{16,2}+quire  vs Posit{16,2}        n=1024  A melhor  59.8%  empate  12.8%  B melhor  27.4%  med log2(eB/eA) = +0.74
+  rotacionada comum    Posit{16,2}+quire  vs Float16            n=1024  A melhor  75.8%  empate   2.8%  B melhor  21.4%  med log2(eB/eA) = +1.68
+== Experimento I (16 bits): precisão cônica (A rotacionada, Gauss, j ≤ 8)
+  original intermediários dentro de [1/16,16): n= 502  vantagem mediana do posit = +1.00 bits
+  original intermediários fora   de [1/16,16): n= 522  vantagem mediana do posit = +0.94 bits
+  comum    intermediários dentro de [1/16,16): n= 501  vantagem mediana do posit = +0.87 bits
+  comum    intermediários fora   de [1/16,16): n= 523  vantagem mediana do posit = +0.19 bits
+== Experimento I (16 bits): tempo
+  canonica    diadica  j= 4 Float16            lu         160.0 ns    10 alocações
+  canonica    diadica  j= 4 Float16            lu_pp      160.0 ns    10 alocações
+  canonica    diadica  j= 4 Posit{16,2}        lu         390.0 ns    10 alocações
+  canonica    diadica  j= 4 Posit{16,2}        lu_pp      395.0 ns    10 alocações
+  canonica    diadica  j= 4 Posit{16,2}+quire  lu        3845.0 ns   130 alocações
+  canonica    diadica  j= 4 Posit{16,2}+quire  lu_pp     3825.0 ns   130 alocações
+  canonica    diadica  j= 8 Float16            lu         160.0 ns    10 alocações
+  canonica    diadica  j= 8 Float16            lu_pp      160.0 ns    10 alocações
+  canonica    diadica  j= 8 Posit{16,2}        lu         390.0 ns    10 alocações
+  canonica    diadica  j= 8 Posit{16,2}        lu_pp      400.0 ns    10 alocações
+  canonica    diadica  j= 8 Posit{16,2}+quire  lu        3742.5 ns   130 alocações
+  canonica    diadica  j= 8 Posit{16,2}+quire  lu_pp     3720.0 ns   130 alocações
+  canonica    generica j= 4 Float16            lu         160.0 ns    10 alocações
+  canonica    generica j= 4 Float16            lu_pp      165.0 ns    10 alocações
+  canonica    generica j= 4 Posit{16,2}        lu         400.0 ns    10 alocações
+  canonica    generica j= 4 Posit{16,2}        lu_pp      400.0 ns    10 alocações
+  canonica    generica j= 4 Posit{16,2}+quire  lu        3825.0 ns   130 alocações
+  canonica    generica j= 4 Posit{16,2}+quire  lu_pp     3942.5 ns   130 alocações
+  canonica    generica j= 8 Float16            lu         165.0 ns    10 alocações
+  canonica    generica j= 8 Float16            lu_pp      165.0 ns    10 alocações
+  canonica    generica j= 8 Posit{16,2}        lu         395.0 ns    10 alocações
+  canonica    generica j= 8 Posit{16,2}        lu_pp      400.0 ns    10 alocações
+  canonica    generica j= 8 Posit{16,2}+quire  lu        3830.0 ns   130 alocações
+  canonica    generica j= 8 Posit{16,2}+quire  lu_pp     3850.0 ns   130 alocações
+  rotacionada diadica  j= 4 Float16            lu         165.0 ns    10 alocações
+  rotacionada diadica  j= 4 Float16            lu_pp      210.0 ns    14 alocações
+  rotacionada diadica  j= 4 Posit{16,2}        lu         400.0 ns    10 alocações
+  rotacionada diadica  j= 4 Posit{16,2}        lu_pp      677.5 ns    14 alocações
+  rotacionada diadica  j= 4 Posit{16,2}+quire  lu        3707.5 ns   130 alocações
+  rotacionada diadica  j= 4 Posit{16,2}+quire  lu_pp     4207.5 ns   143 alocações
+  rotacionada diadica  j= 8 Float16            lu         160.0 ns    10 alocações
+  rotacionada diadica  j= 8 Float16            lu_pp      210.0 ns    14 alocações
+  rotacionada diadica  j= 8 Posit{16,2}        lu         400.0 ns    10 alocações
+  rotacionada diadica  j= 8 Posit{16,2}        lu_pp      455.0 ns    14 alocações
+  rotacionada diadica  j= 8 Posit{16,2}+quire  lu        3745.0 ns   130 alocações
+  rotacionada diadica  j= 8 Posit{16,2}+quire  lu_pp     4087.5 ns   143 alocações
+  rotacionada generica j= 4 Float16            lu         160.0 ns    10 alocações
+  rotacionada generica j= 4 Float16            lu_pp      210.0 ns    14 alocações
+  rotacionada generica j= 4 Posit{16,2}        lu         395.0 ns    10 alocações
+  rotacionada generica j= 4 Posit{16,2}        lu_pp      455.0 ns    14 alocações
+  rotacionada generica j= 4 Posit{16,2}+quire  lu        3710.0 ns   130 alocações
+  rotacionada generica j= 4 Posit{16,2}+quire  lu_pp     4210.0 ns   143 alocações
+  rotacionada generica j= 8 Float16            lu         190.0 ns    10 alocações
+  rotacionada generica j= 8 Float16            lu_pp      210.0 ns    14 alocações
+  rotacionada generica j= 8 Posit{16,2}        lu         395.0 ns    10 alocações
+  rotacionada generica j= 8 Posit{16,2}        lu_pp      460.0 ns    14 alocações
+  rotacionada generica j= 8 Posit{16,2}+quire  lu        3857.5 ns   130 alocações
+  rotacionada generica j= 8 Posit{16,2}+quire  lu_pp     4297.5 ns   143 alocações
+== gráficos (16 bits)
+== Experimento I (32 bits): precisão
+  canonica    diadica  original Float32            j≤32  singular j= 24  med. erro LU>1% j= 23  RI>1% j= 24  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  original Posit{32,2}        j≤32  singular j= 28  med. erro LU>1% j= 27  RI>1% j= 28  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  original Posit{32,2}+quire  j≤32  singular j= 28  med. erro LU>1% j= 27  RI>1% j= 28  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  comum    Float32            j≤23  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  comum    Posit{32,2}        j≤23  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    diadica  comum    Posit{32,2}+quire  j≤23  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 0.00e+00  η 0.00e+00
+  canonica    generica original Float32            j≤32  singular j= 24  med. erro LU>1% j= 20  RI>1% j= 24  med.(j≤8) erro LU 5.96e-07  η 9.49e-09
+  canonica    generica original Posit{32,2}        j≤32  singular j= 28  med. erro LU>1% j= 24  RI>1% j= 28  med.(j≤8) erro LU 2.24e-08  η 5.82e-10
+  canonica    generica original Posit{32,2}+quire  j≤32  singular j= 28  med. erro LU>1% j= 24  RI>1% j= 28  med.(j≤8) erro LU 2.24e-08  η 5.82e-10
+  canonica    generica comum    Float32            j≤22  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 1.74e-08  η 5.98e-11
+  canonica    generica comum    Posit{32,2}        j≤22  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 9.15e-10  η 2.24e-12
+  canonica    generica comum    Posit{32,2}+quire  j≤22  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 9.15e-10  η 2.24e-12
+  rotacionada diadica  original Float32            j≤32  singular j= 24  med. erro LU>1% j= 19  RI>1% j= 26  med.(j≤8) erro LU 4.74e-07  η 2.00e-08
+  rotacionada diadica  original Posit{32,2}        j≤32  singular j= 28  med. erro LU>1% j= 23  RI>1% j= 29  med.(j≤8) erro LU 2.98e-08  η 1.12e-09
+  rotacionada diadica  original Posit{32,2}+quire  j≤32  singular j= 28  med. erro LU>1% j= 23  RI>1% j= 30  med.(j≤8) erro LU 3.27e-08  η 8.35e-10
+  rotacionada diadica  comum    Float32            j≤27  singular j= -1  med. erro LU>1% j= 19  RI>1% j= -1  med.(j≤8) erro LU 3.75e-07  η 1.50e-08
+  rotacionada diadica  comum    Posit{32,2}        j≤27  singular j= -1  med. erro LU>1% j= 26  RI>1% j= -1  med.(j≤8) erro LU 1.67e-08  η 9.34e-10
+  rotacionada diadica  comum    Posit{32,2}+quire  j≤27  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 1.46e-08  η 6.52e-10
+  rotacionada generica original Float32            j≤32  singular j= 23  med. erro LU>1% j= 18  RI>1% j= 25  med.(j≤8) erro LU 9.70e-07  η 2.08e-08
+  rotacionada generica original Posit{32,2}        j≤32  singular j= 27  med. erro LU>1% j= 22  RI>1% j= 29  med.(j≤8) erro LU 4.29e-08  η 1.01e-09
+  rotacionada generica original Posit{32,2}+quire  j≤32  singular j= 27  med. erro LU>1% j= 22  RI>1% j= 30  med.(j≤8) erro LU 5.22e-08  η 9.36e-10
+  rotacionada generica comum    Float32            j≤26  singular j= -1  med. erro LU>1% j= 19  RI>1% j= -1  med.(j≤8) erro LU 5.46e-07  η 1.48e-08
+  rotacionada generica comum    Posit{32,2}        j≤26  singular j= -1  med. erro LU>1% j= 25  RI>1% j= -1  med.(j≤8) erro LU 2.97e-08  η 9.65e-10
+  rotacionada generica comum    Posit{32,2}+quire  j≤26  singular j= -1  med. erro LU>1% j= -1  RI>1% j= -1  med.(j≤8) erro LU 2.59e-08  η 6.62e-10
+== Experimento I (32 bits): comparação pareada (Gauss sem pivoteamento, j ≤ 8)
+  canonica    original Posit{32,2}        vs Float32            n=  32  A melhor  34.4%  empate  59.4%  B melhor   6.2%  med log2(eB/eA) = +0.00
+  canonica    original Posit{32,2}+quire  vs Posit{32,2}        n=  32  A melhor   0.0%  empate 100.0%  B melhor   0.0%  med log2(eB/eA) = +0.00
+  canonica    original Posit{32,2}+quire  vs Float32            n=  32  A melhor  34.4%  empate  59.4%  B melhor   6.2%  med log2(eB/eA) = +0.00
+  canonica    comum    Posit{32,2}        vs Float32            n=  32  A melhor  34.4%  empate  65.6%  B melhor   0.0%  med log2(eB/eA) = +0.00
+  canonica    comum    Posit{32,2}+quire  vs Posit{32,2}        n=  32  A melhor   0.0%  empate 100.0%  B melhor   0.0%  med log2(eB/eA) = +0.00
+  canonica    comum    Posit{32,2}+quire  vs Float32            n=  32  A melhor  34.4%  empate  65.6%  B melhor   0.0%  med log2(eB/eA) = +0.00
+  rotacionada original Posit{32,2}        vs Float32            n=1024  A melhor  83.6%  empate   2.4%  B melhor  14.0%  med log2(eB/eA) = +4.00
+  rotacionada original Posit{32,2}+quire  vs Posit{32,2}        n=1024  A melhor  49.7%  empate  12.4%  B melhor  37.9%  med log2(eB/eA) = +0.00
+  rotacionada original Posit{32,2}+quire  vs Float32            n=1024  A melhor  83.9%  empate   1.4%  B melhor  14.7%  med log2(eB/eA) = +4.18
+  rotacionada comum    Posit{32,2}        vs Float32            n=1024  A melhor  92.0%  empate   2.8%  B melhor   5.2%  med log2(eB/eA) = +4.04
+  rotacionada comum    Posit{32,2}+quire  vs Posit{32,2}        n=1024  A melhor  57.2%  empate  12.1%  B melhor  30.7%  med log2(eB/eA) = +0.46
+  rotacionada comum    Posit{32,2}+quire  vs Float32            n=1024  A melhor  91.8%  empate   0.9%  B melhor   7.3%  med log2(eB/eA) = +4.86
+== Experimento I (32 bits): precisão cônica (A rotacionada, Gauss, j ≤ 8)
+  original intermediários dentro de [1/16,16): n= 502  vantagem mediana do posit = +4.00 bits
+  original intermediários fora   de [1/16,16): n= 522  vantagem mediana do posit = +4.00 bits
+  comum    intermediários dentro de [1/16,16): n= 502  vantagem mediana do posit = +4.14 bits
+  comum    intermediários fora   de [1/16,16): n= 522  vantagem mediana do posit = +4.00 bits
+== Experimento I (32 bits): tempo
+  canonica    diadica  j= 4 Float32            lu         125.0 ns    10 alocações
+  canonica    diadica  j= 4 Float32            lu_pp      125.0 ns    10 alocações
+  canonica    diadica  j= 4 Posit{32,2}        lu         385.0 ns    10 alocações
+  canonica    diadica  j= 4 Posit{32,2}        lu_pp      385.0 ns    10 alocações
+  canonica    diadica  j= 4 Posit{32,2}+quire  lu       13662.5 ns   407 alocações
+  canonica    diadica  j= 4 Posit{32,2}+quire  lu_pp    13307.5 ns   407 alocações
+  canonica    diadica  j= 8 Float32            lu         125.0 ns    10 alocações
+  canonica    diadica  j= 8 Float32            lu_pp      140.0 ns    10 alocações
+  canonica    diadica  j= 8 Posit{32,2}        lu         385.0 ns    10 alocações
+  canonica    diadica  j= 8 Posit{32,2}        lu_pp      390.0 ns    10 alocações
+  canonica    diadica  j= 8 Posit{32,2}+quire  lu       13535.0 ns   407 alocações
+  canonica    diadica  j= 8 Posit{32,2}+quire  lu_pp    13277.5 ns   407 alocações
+  canonica    generica j= 4 Float32            lu         125.0 ns    10 alocações
+  canonica    generica j= 4 Float32            lu_pp      130.0 ns    10 alocações
+  canonica    generica j= 4 Posit{32,2}        lu         385.0 ns    10 alocações
+  canonica    generica j= 4 Posit{32,2}        lu_pp      390.0 ns    10 alocações
+  canonica    generica j= 4 Posit{32,2}+quire  lu       14000.0 ns   414 alocações
+  canonica    generica j= 4 Posit{32,2}+quire  lu_pp    15357.5 ns   414 alocações
+  canonica    generica j= 8 Float32            lu         125.0 ns    10 alocações
+  canonica    generica j= 8 Float32            lu_pp      130.0 ns    10 alocações
+  canonica    generica j= 8 Posit{32,2}        lu         632.5 ns    10 alocações
+  canonica    generica j= 8 Posit{32,2}        lu_pp      390.0 ns    10 alocações
+  canonica    generica j= 8 Posit{32,2}+quire  lu       14807.5 ns   413 alocações
+  canonica    generica j= 8 Posit{32,2}+quire  lu_pp    15215.0 ns   413 alocações
+  rotacionada diadica  j= 4 Float32            lu         125.0 ns    10 alocações
+  rotacionada diadica  j= 4 Float32            lu_pp      175.0 ns    14 alocações
+  rotacionada diadica  j= 4 Posit{32,2}        lu         390.0 ns    10 alocações
+  rotacionada diadica  j= 4 Posit{32,2}        lu_pp      435.0 ns    14 alocações
+  rotacionada diadica  j= 4 Posit{32,2}+quire  lu       14240.0 ns   401 alocações
+  rotacionada diadica  j= 4 Posit{32,2}+quire  lu_pp    15130.0 ns   428 alocações
+  rotacionada diadica  j= 8 Float32            lu         125.0 ns    10 alocações
+  rotacionada diadica  j= 8 Float32            lu_pp      175.0 ns    14 alocações
+  rotacionada diadica  j= 8 Posit{32,2}        lu         390.0 ns    10 alocações
+  rotacionada diadica  j= 8 Posit{32,2}        lu_pp      435.0 ns    14 alocações
+  rotacionada diadica  j= 8 Posit{32,2}+quire  lu       14327.5 ns   401 alocações
+  rotacionada diadica  j= 8 Posit{32,2}+quire  lu_pp    14715.0 ns   430 alocações
+  rotacionada generica j= 4 Float32            lu         125.0 ns    10 alocações
+  rotacionada generica j= 4 Float32            lu_pp      180.0 ns    14 alocações
+  rotacionada generica j= 4 Posit{32,2}        lu         385.0 ns    10 alocações
+  rotacionada generica j= 4 Posit{32,2}        lu_pp      435.0 ns    14 alocações
+  rotacionada generica j= 4 Posit{32,2}+quire  lu       14202.5 ns   402 alocações
+  rotacionada generica j= 4 Posit{32,2}+quire  lu_pp    15052.5 ns   430 alocações
+  rotacionada generica j= 8 Float32            lu         125.0 ns    10 alocações
+  rotacionada generica j= 8 Float32            lu_pp      170.0 ns    14 alocações
+  rotacionada generica j= 8 Posit{32,2}        lu         385.0 ns    10 alocações
+  rotacionada generica j= 8 Posit{32,2}        lu_pp      435.0 ns    14 alocações
+  rotacionada generica j= 8 Posit{32,2}+quire  lu       14115.0 ns   400 alocações
+  rotacionada generica j= 8 Posit{32,2}+quire  lu_pp    14780.0 ns   428 alocações
+== gráficos (32 bits)
+resultados em H:\matemagica\pesquisa\git\PositPR-fix\benchmarks\results

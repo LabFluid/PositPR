@@ -1,0 +1,13 @@
+estrutura,modo,A,B,casos,A_melhor,empate,B_melhor,mediana_log2_B_sobre_A
+canonica,original,"Posit{16,2}",Float16,32,0.21875,0.59375,0.1875,0
+canonica,original,"Posit{16,2}+quire","Posit{16,2}",32,0,1,0,0
+canonica,original,"Posit{16,2}+quire",Float16,32,0.21875,0.59375,0.1875,0
+canonica,comum,"Posit{16,2}",Float16,32,0.25,0.75,0,0
+canonica,comum,"Posit{16,2}+quire","Posit{16,2}",32,0,1,0,0
+canonica,comum,"Posit{16,2}+quire",Float16,32,0.25,0.75,0,0
+rotacionada,original,"Posit{16,2}",Float16,1024,0.6748046875,0.0712890625,0.25390625,1
+rotacionada,original,"Posit{16,2}+quire","Posit{16,2}",1024,0.4716796875,0.12890625,0.3994140625,0
+rotacionada,original,"Posit{16,2}+quire",Float16,1024,0.7041015625,0.01953125,0.2763671875,1.0126804819887631
+rotacionada,comum,"Posit{16,2}",Float16,1024,0.62109375,0.0966796875,0.2822265625,0.57950598125838904
+rotacionada,comum,"Posit{16,2}+quire","Posit{16,2}",1024,0.59765625,0.1279296875,0.2744140625,0.73969429599210135
+rotacionada,comum,"Posit{16,2}+quire",Float16,1024,0.7578125,0.0283203125,0.2138671875,1.6839286479439157

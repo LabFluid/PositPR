@@ -1,81 +1,38 @@
+# Comparisons. Bit patterns read as signed (two's complement) integers are in the
+# same order as the values they represent, and NaR (100…0) is the most negative
+# pattern, so comparing posits is comparing integers. NaR == NaR and NaR is
+# smaller than every number, as in the Posit standard.
+
 import Base: ==, >, >=, <, <=, isless
-function Base.:(==)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    if a.sn == 1 && b.sn == 1
-        return a.s == b.s
-    end
-    for i in 1:nfields(a)
-        if getfield(a, i) != getfield(b, i)
-            return false
-        end
-    end
-    return true
+
+"Bit pattern as a signed integer (two's complement over ps bits)."
+@inline function signed_bits(p::Posit{ps, es}) where {ps, es}
+    u = bits(p)
+    ps == 128 && return reinterpret(Int128, u)
+    return u >= nar_bits(ps) ? Int128(u) - (Int128(1) << ps) : Int128(u)
 end
 
+Base.:(==)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es} = bits(a) == bits(b)
 Base.:(==)(::Posit{ps1, es1}, ::Posit{ps2, es2}) where {ps1, es1, ps2, es2} = false
 
-function parse_UInt(s::String)
-	return parse(UInt,s, base=2)
-end
-
-function Base.:(>)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    if a.sn == 1 && a.s == 1
-        return false
-    end
-
-    if b.sn == 1 && b.s == 1
-        return true
-    end
-
-    if a.s != b.s
-        return a.s == 0
-    end
-
-    if a.sn == 1 && a.s == 0
-        return false
-    end
-
-    if b.sn == 1 && b.s == 0
-        return true
-    end
-
-    positives = (a.s == 0)
-
-    if a.k > b.k
-        return positives
-    elseif a.k == b.k
-        if a.e > b.e
-            return positives
-        elseif a.e == b.e
-            parse_UInt(bits::AbstractString) = isempty(bits) ? UInt(0) : parse(UInt, bits; base=2)
-            if parse_UInt(a.fi) > parse_UInt(b.fi)
-                return positives
-            end
-        end
-    end
-
-    return !positives
-end
-
-function Base.:(>=)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    a == b || a > b
-end
-
-function Base.:(<)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    !(a >= b)
-end
-
+Base.:(<)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es} = signed_bits(a) < signed_bits(b)
+Base.:(>)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es} = signed_bits(a) > signed_bits(b)
+Base.:(<=)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es} = signed_bits(a) <= signed_bits(b)
+Base.:(>=)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es} = signed_bits(a) >= signed_bits(b)
 Base.isless(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es} = a < b
 
-function Base.:(<=)(a::Posit{ps, es}, b::Posit{ps, es}) where {ps, es}
-    a == b || a < b
-end
-
-function Base.:(>=)(a::Posit{ps,es}, b::Posit{ps2,es2}) where {ps,es,ps2,es2} 
+function Base.:(>=)(a::Posit{ps,es}, b::Posit{ps2,es2}) where {ps,es,ps2,es2}
     if ps > ps2 || (ps == ps2 && es >= es2)
         return a >= x2Posit(b, Posit{ps,es})
-    else 
+    else
         return x2Posit(a, Posit{ps2,es2}) >= b
     end
+end
+
+# Posits of different types: compare in the wider format (PositConverter).
+for op in (:<, :>, :<=, :isless)
+    @eval Base.$op(a::Posit{ps,es}, b::Posit{ps2,es2}) where {ps,es,ps2,es2} =
+        Base.$op(PositConverter(a, b)...)
 end
 
 <(a::Real, b::Posit{ps,es}) where {ps,es} = Posit{ps,es}(a) < b
@@ -90,36 +47,38 @@ Base.isless(a::Real, b::Posit{ps, es}) where {ps, es} = Posit{ps,es}(a) < b
 Base.:(>=)(a::Posit{ps,es}, b::Real) where {ps,es} = a >= Posit{ps, es}(b)
 Base.isless(a::Posit{ps, es}, b::Real) where {ps, es} = a < Posit{ps, es}(b)
 
+# Base defines isless(::Real, ::AbstractFloat) and isless(::AbstractFloat, ::Real);
+# these methods resolve the ambiguity with Posit.
+Base.isless(a::Posit{ps, es}, b::AbstractFloat) where {ps, es} = a < Posit{ps, es}(b)
+Base.isless(a::AbstractFloat, b::Posit{ps, es}) where {ps, es} = Posit{ps, es}(a) < b
+
 function useed(es)
 	return 2^(2^es)
 end
 
-import Base: one
-function Base.one(::Type{Posit{ps, es}}) where {ps, es}
-    fs = max(ps - 3 - es, 0)
-    fi = fs == 0 ? "" : "0"^fs
-    ers = min(ps - 3, es)
-    return Posit{ps, es}(0, 0, 0, 2, ers, 0, fi, fs, 0.0, useed(es))
-end
+# ---------------------------------------------------------------- constants
 
+import Base: one, zero, isone, iszero, typemin, typemax
+Base.one(::Type{PT}) where {ps, es, PT <: Posit{ps, es}} = from_bits(PT, UInt128(1) << (ps - 2))
 Base.one(p::Posit{ps, es}) where {ps, es} = one(Posit{ps, es})
+Base.isone(a::Posit{ps, es}) where {ps, es} = bits(a) == UInt128(1) << (ps - 2)
 
-import Base: isone
-function Base.isone(a::Posit{ps, es}) where {ps, es}
-    a == one(Posit{ps, es})
-end
-
-import Base: zero
-function Base.zero(::Type{Posit{ps, es}}) where {ps, es}
-    return Posit{ps, es}(0, 1, 0, 0, 0, 0, "0", 0, 0.0, 2.0^(2^es))
-end
-
+Base.zero(::Type{PT}) where {ps, es, PT <: Posit{ps, es}} = from_bits(PT, UInt128(0))
 Base.zero(p::Posit{ps, es}) where {ps, es} = zero(Posit{ps, es})
+Base.iszero(a::Posit) = iszero(bits(a))
 
-import Base: iszero
-function Base.iszero(a::Posit{ps, es}) where {ps, es}
-    a == zero(Posit{ps, es})
-end
+"Smallest positive posit (minpos)."
+smallest(::Type{PT}) where {ps, es, PT <: Posit{ps, es}} = from_bits(PT, UInt128(1))
+
+"Most negative finite posit (-maxpos)."
+typemin(::Type{PT}) where {ps, es, PT <: Posit{ps, es}} = from_bits(PT, nar_bits(ps) + UInt128(1))
+
+"Largest posit (maxpos)."
+typemax(::Type{PT}) where {ps, es, PT <: Posit{ps, es}} = from_bits(PT, maxpos_bits(ps))
+
+"Not a Real: the single exception value of the posit system."
+NaR(::Type{PT}) where {ps, es, PT <: Posit{ps, es}} = from_bits(PT, nar_bits(ps))
+isNaR(a::Posit{ps,es}) where {ps,es} = bits(a) == nar_bits(ps)
 
 import Base: zeros, ones
 function Base.zeros(::Type{T}, dims::Integer...) where {ps, es, T <: Posit{ps, es}}
@@ -130,71 +89,52 @@ function Base.ones(::Type{T}, dims::Integer...) where {ps, es, T <: Posit{ps, es
     fill(one(Posit{ps, es}), dims...)
 end
 
-function ispower_oftwo(n::Integer)
-    return n > 0 && (n & (n - 1)) == 0
-end
-
-function ispower_oftwo(str::String)
-	return all(x -> x == '0', str)
-end
-
 import Base.:abs
-function abs(a::Posit{ps, es}) where {ps, es}
-	return (a.s != 0) ? twos_complement(a) : a
+abs(a::Posit{ps, es}) where {ps, es} = sign_bit(a) == 1 ? -a : a   # -NaR == NaR
+
+# ------------------------------------------------------------- neighbours
+
+"""
+    nextPosit(a)
+
+Next posit greater than `a`: adds 1 to the bit pattern (patterns are in the same
+order as the values). Saturates at `maxpos`; `nextPosit(NaR) == NaR`.
+"""
+function nextPosit(a::Posit{ps, es}) where {ps, es}
+    (isNaR(a) || bits(a) == maxpos_bits(ps)) && return a
+    return from_bits(Posit{ps, es}, (bits(a) + UInt128(1)) & posit_mask(ps))
+end
+
+"Posit preceding `a` (subtracts 1 from the pattern). Saturates at `-maxpos`."
+function prevPosit(a::Posit{ps, es}) where {ps, es}
+    (isNaR(a) || bits(a) == nar_bits(ps) + UInt128(1)) && return a
+    return from_bits(Posit{ps, es}, (bits(a) - UInt128(1)) & posit_mask(ps))
 end
 
 import Base.eps
 
-function eps(::Type{Posit{ps, es}}) where {ps, es}
-    one_posit = one(Posit{ps, es})
-    epsilon = one_posit
+eps(::Type{PT}) where {ps, es, PT <: Posit{ps, es}} = eps(one(PT))
 
-    while one_posit + epsilon/2 > one_posit
-        epsilon /= 2
-    end
+"""
+    eps(a)
 
-    return epsilon
-end
-
+Distance from `a` to the next posit of larger magnitude (with the sign of `a`),
+rounded to the format. At `maxpos` the distance to the previous posit is used.
+"""
 function eps(a::Posit{ps, es}) where {ps, es}
-    if iszero(a)
-        return abs(smallest(typeof(a)))
-    end
-
-    if a.s == 1  # número negativo
-        return -eps(abs(a))
-    end
-
-    ε = one(Posit{ps, es})
-
-    while a + ε/2 > a
-        ε /= 2
-    end
-
-    return ε
+    iszero(a) && return smallest(typeof(a))
+    isNaR(a) && return a
+    m = abs(a)
+    nxt = nextPosit(m)
+    d = nxt == m ? m - prevPosit(m) : nxt - m
+    return sign_bit(a) == 1 ? -d : d
 end
 
-function nextPosit(a::Posit{ps, es}) where {ps, es}
-    if iszero(a) 
-        return eps(a)
-    end
-    if a.s == 1 && ispower_oftwo(a.fi)
-        return a + eps(a) / 2
-    end
-    return a + eps(a)
+import Base: decompose
+"`x == num · 2^pow / den`, used by Julia to compare and hash reals of different types."
+function decompose(x::Posit{ps, es}) where {ps, es}
+    isNaR(x) && return Int128(0), 0, 0
+    iszero(x) && return Int128(0), 0, 1
+    s, M, P = exact_parts(x)
+    return (s == 1 ? -Int128(M) : Int128(M)), P, 1
 end
-
-function prevPosit(a::Posit{ps, es}) where {ps, es}
-    if iszero(a) 
-        return -eps(a)
-    end
-    if a.s == 0 && ispower_oftwo(a.fi)
-        return a - eps(a) / 2
-    end
-    
-    return a - eps(a)
-end
-
-isNaR(a::Posit{ps,es}) where {ps,es} = a.sn == 1 && a.s == 1
-
-NaR(::Type{Posit{ps,es}}) where {ps,es} = Posit{ps, es}(1, 1, 0, 0, 0, 0, "0", 0, 0.0, 2.0^(2^es))
